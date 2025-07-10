@@ -39,6 +39,8 @@ import { aesDecryptGCM, aesEncryptGCM, hkdf } from './crypto'
 import { generateMessageIDV2 } from './generics'
 import { ILogger } from './logger'
 
+import { PrepareStreamResult, EncryptedStreamResult } from '../Types/message';
+
 const getTmpFilesDirectory = () => tmpdir()
 
 const getImageProcessingLibrary = async() => {
@@ -507,7 +509,8 @@ export const prepareStream = async (
   media: WAMediaUpload,
   mediaType: MediaType,
   { logger, saveOriginalFileIfRequired, opts }: EncryptedStreamOptions = {}
-) => {
+): Promise<PrepareStreamResult> => {
+  
   const { stream, type } = await getStream(media, opts);
   logger?.debug('fetched media stream');
   let bodyPath: string | undefined;
@@ -551,7 +554,8 @@ export const encryptedStream = async (
   media: WAMediaUpload,
   mediaType: MediaType,
   { logger, saveOriginalFileIfRequired, opts }: EncryptedStreamOptions = {}
-) => {
+): Promise<EncryptedStreamResult> => {
+
   const { stream, type } = await getStream(media, opts);
 
   logger?.debug('fetched media stream');
@@ -875,12 +879,12 @@ export const getWAUploadToServer = (
 		let urls: { mediaUrl: string, directPath: string, handle?: string } | undefined
 		const hosts = [ ...customUploadHosts, ...uploadInfo.hosts ]
 
-		const chunks: Buffer[] | Buffer = []
+		/*const chunks: Buffer[] | Buffer = []
 		if(!Buffer.isBuffer(stream)) {
 			for await (const chunk of stream) {
 				chunks.push(chunk)
 			}
-		}
+		}*/
 
 		//const reqBody = Buffer.isBuffer(stream) ? stream : Buffer.concat(chunks)
 		fileEncSha256B64 = encodeBase64EncodedStringForUpload(fileEncSha256B64)
