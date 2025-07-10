@@ -502,7 +502,7 @@ type EncryptedStreamOptions = {
 	logger?: ILogger
 	opts?: AxiosRequestConfig
 }
-
+/*
 import { createWriteStream, WriteStream, writeFileSync } from 'fs';
 import { join } from 'path';
 import { toBuffer } from '@whiskeysockets/baileys';
@@ -510,7 +510,7 @@ import * as Crypto from 'crypto';
 import * as fs from 'fs/promises';
 import { getTmpFilesDirectory, generateMessageIDV2 } from './your-utils'; // adjust path
 import type { EncryptedStreamOptions, MediaType, WAMediaUpload } from './types'; // adjust as needed
-
+*/
 export const prepareStream = async (
 	media: WAMediaUpload,
 	mediaType: MediaType,
