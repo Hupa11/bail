@@ -556,135 +556,105 @@ export const prepareStream = async(
 	}
 }
 
-export const encryptedStream = async(
-	media: WAMediaUpload,
-	mediaType: MediaType,
-	{ logger, saveOriginalFileIfRequired, opts }: EncryptedStreamOptions = {}
+export const encryptedStream = async (
+  media: WAMediaUpload,
+  mediaType: MediaType,
+  { logger, saveOriginalFileIfRequired, opts }: EncryptedStreamOptions = {}
 ) => {
-	const { stream, type } = await getStream(media, opts)
+  const { stream, type } = await getStream(media, opts);
 
-	logger?.debug('fetched media stream')
+  logger?.debug('fetched media stream');
 
-	const mediaKey = Crypto.randomBytes(32)
-	const { cipherKey, iv, macKey } = await getMediaKeys(mediaKey, mediaType)
-	/*const encWriteStream = new Readable({ read: () => {} })
+  const mediaKey = Crypto.randomBytes(32);
+  const { cipherKey, iv, macKey } = await getMediaKeys(mediaKey, mediaType);
+  const encFilePath = join(getTmpFilesDirectory(), mediaType + generateMessageIDV2() + '-enc');
+  const encFileWriteStream = createWriteStream(encFilePath);
 
-	let bodyPath: string | undefined
-	let writeStream: WriteStream | undefined
-	let didSaveToTmpPath = false
-	if(type === 'file') {
-		bodyPath = (media as any).url
-	} else if(saveOriginalFileIfRequired) {
-		bodyPath = join(getTmpFilesDirectory(), mediaType + generateMessageIDV2())
-		writeStream = createWriteStream(bodyPath)
-		didSaveToTmpPath = true
-	}*/
-	const encFilePath = join(
-		getTmpFilesDirectory(),
-		mediaType + generateMessageIDV2() + '-enc'
-	)
-	const encFileWriteStream = createWriteStream(encFilePath)
+  let originalFileStream: WriteStream | undefined;
+  let originalFilePath: string | undefined;
 
-	let originalFileStream: WriteStream | undefined
-	let originalFilePath: string | undefined
+  if (saveOriginalFileIfRequired) {
+    originalFilePath = join(getTmpFilesDirectory(), mediaType + generateMessageIDV2() + '-original');
+    originalFileStream = createWriteStream(originalFilePath);
+  }
 
-	if(saveOriginalFileIfRequired) {
-		originalFilePath = join(
-			getTmpFilesDirectory(),
-			mediaType + generateMessageIDV2() + '-original'
-		)
-		originalFileStream = createWriteStream(originalFilePath)
-	}
+  let fileLength = 0;
+  const aes = Crypto.createCipheriv('aes-256-cbc', cipherKey, iv);
+  const hmac = Crypto.createHmac('sha256', macKey!).update(iv);
+  const sha256Plain = Crypto.createHash('sha256');
+  const sha256Enc = Crypto.createHash('sha256');
 
-	let fileLength = 0
-	const aes = Crypto.createCipheriv('aes-256-cbc', cipherKey, iv)
-	//let hmac = Crypto.createHmac('sha256', macKey!).update(iv)
-	//let sha256Plain = Crypto.createHash('sha256')
-	//let sha256Enc = Crypto.createHash('sha256')
-	const hmac = Crypto.createHmac('sha256', macKey!).update(iv)
-	const sha256Plain = Crypto.createHash('sha256')
-	const sha256Enc = Crypto.createHash('sha256')
+  const onChunk = (buff: Buffer) => {
+    sha256Enc.update(buff);
+    hmac.update(buff);
+    encFileWriteStream.write(buff);
+  };
 
-	const onChunk = (buff: Buffer) => {
-		sha256Enc.update(buff)
-		hmac.update(buff)
-		encFileWriteStream.write(buff)
-	}
+  try {
+    for await (const data of stream) {
+      fileLength += data.length;
 
-	try {
-		for await (const data of stream) {
-			fileLength += data.length
+      if (type === 'remote' && opts?.maxContentLength && fileLength + data.length > opts.maxContentLength) {
+        throw new Boom(`content length exceeded when encrypting "${type}"`, { data: { media, type } });
+      }
 
-			if(
-				type === 'remote'
-				&& opts?.maxContentLength
-				&& fileLength + data.length > opts.maxContentLength
-			) {
-				throw new Boom(
-					`content length exceeded when encrypting "${type}"`,
-					{
-						data: { media, type }
-					}
-				)
-			}
+      if (originalFileStream) {
+        if (!originalFileStream.write(data)) {
+          await once(originalFileStream, 'drain');
+        }
+      }
+      sha256Plain.update(data);
+      onChunk(aes.update(data));
+    }export const encryptedStream = async (
+  media: WAMediaUpload,
+  mediaType: MediaType,
+  { logger, saveOriginalFileIfRequired, opts }: EncryptedStreamOptions = {}
+) => {
+  const { stream, type } = await getStream(media, opts);
 
-			//sha256Plain = sha256Plain.update(data)
-			//if(writeStream) {
-				//if(!writeStream.write(data)) {
-					//await once(writeStream, 'drain')
-			if(originalFileStream) {
-				if(!originalFileStream.write(data)) {
-					await once(originalFileStream, 'drain')
-				}
-		}
-                        sha256Plain.update(data)
-			onChunk(aes.update(data))
-		}
+  logger?.debug('fetched media stream');
 
-		onChunk(aes.final())
+  const mediaKey = Crypto.randomBytes(32);
+  const { cipherKey, iv, macKey } = await getMediaKeys(mediaKey, mediaType);
+  const encFilePath = join(getTmpFilesDirectory(), mediaType + generateMessageIDV2() + '-enc');
+  const encFileWriteStream = createWriteStream(encFilePath);
 
-		const mac = hmac.digest().slice(0, 10)
-		//sha256Enc = sha256Enc.update(mac)
-		sha256Enc.update(mac)
+  let originalFileStream: WriteStream | undefined;
+  let originalFilePath: string | undefined;
 
-		const fileSha256 = sha256Plain.digest()
-		const fileEncSha256 = sha256Enc.digest()
+  if (saveOriginalFileIfRequired) {
+    originalFilePath = join(getTmpFilesDirectory(), mediaType + generateMessageIDV2() + '-original');
+    originalFileStream = createWriteStream(originalFilePath);
+  }
 
-		//encWriteStream.push(mac)
-		//encWriteStream.push(null)
-		encFileWriteStream.write(mac)
+  let fileLength = 0;
+  const aes = Crypto.createCipheriv('aes-256-cbc', cipherKey, iv);
+  const hmac = Crypto.createHmac('sha256', macKey!).update(iv);
+  const sha256Plain = Crypto.createHash('sha256');
+  const sha256Enc = Crypto.createHash('sha256');
 
-		//writeStream?.end()
-		
-		encFileWriteStream.end()
-		originalFileStream?.end?.()
-		stream.destroy()
+  const onChunk = (buff: Buffer) => {
+    sha256Enc.update(buff);
+    hmac.update(buff);
+    encFileWriteStream.write(buff);
+  };
 
-		logger?.debug('encrypted data successfully')
+  try {
+    for await (const data of stream) {
+      fileLength += data.length;
 
-		return {
-			mediaKey,
-			//encWriteStream,
-			//bodyPath,
-			originalFilePath,
-			encFilePath,
-			mac,
-			fileEncSha256,
-			fileSha256,
-			fileLength,
-			didSaveToTmpPath
-		}
-	} catch(error) {
-		// destroy all streams with error
-		//encWriteStream.destroy()
-		//writeStream?.destroy()
-		encFileWriteStream.destroy()
-		originalFileStream?.destroy?.()
-		aes.destroy()
-		hmac.destroy()
-		sha256Plain.destroy()
-		sha256Enc.destroy()
-		stream.destroy()
+      if (type === 'remote' && opts?.maxContentLength && fileLength + data.length > opts.maxContentLength) {
+        throw new Boom(`content length exceeded when encrypting "${type}"`, { data: { media, type } });
+      }
+
+      if (originalFileStream) {
+        if (!originalFileStream.write(data)) {
+          await once(originalFileStream, 'drain');
+        }
+      }
+      sha256Plain.update(data);
+      onChunk(aes.update(data));
+    }
 
 		/*if(didSaveToTmpPath) {
 			try {
@@ -692,25 +662,59 @@ export const encryptedStream = async(
 			} catch(err) {
 				logger?.error({ err }, 'failed to save to tmp path')*/
 		
-		try {
-			await fs.unlink(encFilePath)
-			if(originalFilePath) {
-				await fs.unlink(originalFilePath)
-			}
-		} catch(err) {
-			logger?.error({ err }, 'failed deleting tmp files')
-			}
-		}
+    onChunk(aes.final());
+
+    const mac = hmac.digest().slice(0, 10);
+    sha256Enc.update(mac);
+
+    const fileSha256 = sha256Plain.digest();
+    const fileEncSha256 = sha256Enc.digest();
+
+    encFileWriteStream.write(mac);
+
+    encFileWriteStream.end();
+    originalFileStream?.end?.();
+    stream.destroy();
+
+    logger?.debug('encrypted data successfully');
+
+    return {
+      mediaKey,
+      originalFilePath,
+      encFilePath,
+      mac,
+      fileEncSha256,
+      fileSha256,
+      fileLength,
+      didSaveToTmpPath: !!originalFilePath
+    };
+  } catch (error) {
+    encFileWriteStream.destroy();
+    originalFileStream?.destroy?.();
+    aes.destroy();
+    hmac.destroy();
+    sha256Plain.destroy();
+    sha256Enc.destroy();
+    stream.destroy();
+
+    try {
+      await fs.unlink(encFilePath);
+      if (originalFilePath) {
+        await fs.unlink(originalFilePath);
+      }
+    } catch (err) {
+      logger?.error({ err }, 'failed deleting tmp files');
+    }
 
 		throw error
 	}
-
+};
 	/*function onChunk(buff: Buffer) {
 		sha256Enc = sha256Enc.update(buff)
 		hmac = hmac.update(buff)
 		encWriteStream.push(buff)
 	}*/
-}
+
 
 const DEF_HOST = 'mmg.whatsapp.net'
 const AES_CHUNK_SIZE = 16
@@ -901,9 +905,9 @@ export const getWAUploadToServer = (
 			const url = `https://${hostname}${media}/${fileEncSha256B64}?auth=${auth}&token=${fileEncSha256B64}`
 			let result: any
 			try {
-				if(maxContentLengthBytes && reqBody.length > maxContentLengthBytes) {
-					throw new Boom(`Body too large for "${hostname}"`, { statusCode: 413 })
-				}
+				//if(maxContentLengthBytes && reqBody.length > maxContentLengthBytes) {
+				//	throw new Boom(`Body too large for "${hostname}"`, { statusCode: 413 })
+				//}
 
 				const body = await axios.post(
 					url,
