@@ -502,31 +502,15 @@ type EncryptedStreamOptions = {
 	logger?: ILogger
 	opts?: AxiosRequestConfig
 }
-/*
-import { createWriteStream, WriteStream, writeFileSync } from 'fs';
-import { join } from 'path';
-import { toBuffer } from '@whiskeysockets/baileys';
-import * as Crypto from 'crypto';
-import * as fs from 'fs/promises';
-import { getTmpFilesDirectory, generateMessageIDV2 } from './your-utils'; // adjust path
-import type { EncryptedStreamOptions, MediaType, WAMediaUpload } from './types'; // adjust as needed
-*/
 export const prepareStream = async (
 	media: WAMediaUpload,
 	mediaType: MediaType,
 	{ logger, saveOriginalFileIfRequired, opts }: EncryptedStreamOptions = {}
 ) => {
-		/*if(didSaveToTmpPath) {
-			try {
-				await fs.unlink(bodyPath!)
-			} catch(err) {
-				logger?.error({ err }, 'failed to save to tmp path')*/
-		
-    onChunk(aes.final());
+	const { stream, type } = await getStream(media, opts);
 
-const { stream, type } = await getStream(media, opts)
-logger?.debug('fetched media stream');
-	
+	logger?.debug('fetched media stream');
+
 	const encFilePath = join(
 		getTmpFilesDirectory(),
 		mediaType + generateMessageIDV2() + '-enc'
@@ -536,8 +520,9 @@ logger?.debug('fetched media stream');
 	let originalFilePath: string | undefined;
 	let didSaveToTmpPath = false;
 	let bodyPath: string | undefined;
-	try{
-	const buffer = await toBuffer(stream);
+
+	try {
+		const buffer = await toBuffer(stream);
 
 		// Write encrypted data
 		encFileWriteStream.write(buffer);
@@ -558,13 +543,12 @@ logger?.debug('fetched media stream');
 
 		const fileLength = buffer.length;
 		const fileSha256 = Crypto.createHash('sha256').update(buffer).digest();
-	
+
 		stream?.destroy();
 		logger?.debug('prepared stream data successfully');
 
 		return {
 			mediaKey: undefined,
-			//encWriteStream: buffer,
 			encFilePath,
 			originalFilePath,
 			fileLength,
@@ -574,15 +558,14 @@ logger?.debug('fetched media stream');
 			didSaveToTmpPath
 		};
 	} catch (error) {
-		// destroy all streams with error
 		stream.destroy();
 		try {
 			await fs.unlink(encFilePath);
 		} catch (_) {}
 
 		if (didSaveToTmpPath && bodyPath) {
-			try{
-	                   await fs.unlink(bodyPath);
+			try {
+				await fs.unlink(bodyPath);
 			} catch (err) {
 				logger?.error({ err }, 'failed to delete tmp bodyPath');
 			}
@@ -591,7 +574,6 @@ logger?.debug('fetched media stream');
 		throw error;
 	}
 };
-
 export const encryptedStream = async(
 	media: WAMediaUpload,
 	mediaType: MediaType,
