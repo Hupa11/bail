@@ -1,4 +1,4 @@
-
+import { createReadStream } from 'fs';
 import { Boom } from '@hapi/boom'
 import NodeCache from '@cacheable/node-cache'
 import { randomBytes } from 'crypto'
@@ -973,11 +973,13 @@ export const makeMessagesSocket = (config: SocketConfig) => {
 							},
 						),
 						getProfilePicUrl: sock.profilePictureUrl,
-						upload: async(readStream: Readable, opts: WAMediaUploadFunctionOpts) => {
-							const up = await waUploadToServer(readStream, { ...opts, newsletter: isJidNewsletter(jid) })
+//need update 👉
+                                                
+                                                upload: async (encFilePath, opts: WAMediaUploadFunctionOpts) => {
+							const up = await waUploadToServer(encFilePath, { ...opts, newsletter: isJidNewsletter(jid) })
 							mediaHandle = up.handle
 							return up
-						},
+						},	
 						mediaCache: config.mediaCache,
 						options: config.options,
 						messageId: generateMessageIDV2(sock.user?.id),
