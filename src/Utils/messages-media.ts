@@ -503,7 +503,15 @@ type EncryptedStreamOptions = {
 	opts?: AxiosRequestConfig
 }
 
-export const prepareStream = async(
+import { createWriteStream, WriteStream, writeFileSync } from 'fs';
+import { join } from 'path';
+import { toBuffer } from '@whiskeysockets/baileys';
+import * as Crypto from 'crypto';
+import * as fs from 'fs/promises';
+import { getTmpFilesDirectory, generateMessageIDV2 } from './your-utils'; // adjust path
+import type { EncryptedStreamOptions, MediaType, WAMediaUpload } from './types'; // adjust as needed
+
+export const prepareStream = async (
 	media: WAMediaUpload,
 	mediaType: MediaType,
 	{ logger, saveOriginalFileIfRequired, opts }: EncryptedStreamOptions = {}
@@ -517,50 +525,72 @@ export const prepareStream = async(
     onChunk(aes.final());
 
 const { stream, type } = await getStream(media, opts)
+logger?.debug('fetched media stream');
+	
+	const encFilePath = join(
+		getTmpFilesDirectory(),
+		mediaType + generateMessageIDV2() + '-enc'
+	);
+	const encFileWriteStream = createWriteStream(encFilePath);
 
-	logger?.debug('fetched media stream')
-let bodyPath: string | undefined
-	let didSaveToTmpPath = false
-	try {
-		const buffer = await toBuffer(stream)
-		if(type === 'file') {
-			bodyPath = (media as any).url
-		} else if(saveOriginalFileIfRequired) {
-			bodyPath = join(getTmpFilesDirectory(), mediaType + generateMessageIDV2())
-			writeFileSync(bodyPath, buffer)
-			didSaveToTmpPath = true
+	let originalFilePath: string | undefined;
+	let didSaveToTmpPath = false;
+	let bodyPath: string | undefined;
+	try{
+	const buffer = await toBuffer(stream);
+
+		// Write encrypted data
+		encFileWriteStream.write(buffer);
+		encFileWriteStream.end();
+
+		// Save original file if required
+		if (saveOriginalFileIfRequired) {
+			originalFilePath = join(
+				getTmpFilesDirectory(),
+				mediaType + generateMessageIDV2() + '-original'
+			);
+			writeFileSync(originalFilePath, buffer);
+			bodyPath = originalFilePath;
+			didSaveToTmpPath = true;
+		} else if (type === 'file' && typeof (media as any).url === 'string') {
+			bodyPath = (media as any).url;
 		}
 
-		const fileLength = buffer.length
-		const fileSha256 = Crypto.createHash('sha256').update(buffer).digest()
-
-		stream?.destroy()
-		logger?.debug('prepare stream data successfully')
+		const fileLength = buffer.length;
+		const fileSha256 = Crypto.createHash('sha256').update(buffer).digest();
+	
+		stream?.destroy();
+		logger?.debug('prepared stream data successfully');
 
 		return {
 			mediaKey: undefined,
-			encWriteStream: buffer,
+			//encWriteStream: buffer,
+			encFilePath,
+			originalFilePath,
 			fileLength,
 			fileSha256,
 			fileEncSha256: undefined,
 			bodyPath,
 			didSaveToTmpPath
-		}
+		};
 	} catch (error) {
 		// destroy all streams with error
-		stream.destroy()
+		stream.destroy();
+		try {
+			await fs.unlink(encFilePath);
+		} catch (_) {}
 
-		if(didSaveToTmpPath) {
-			try {
-				await fs.unlink(bodyPath!)
-			} catch(err) {
-				logger?.error({ err }, 'failed to save to tmp path')
+		if (didSaveToTmpPath && bodyPath) {
+			try{
+	                   await fs.unlink(bodyPath);
+			} catch (err) {
+				logger?.error({ err }, 'failed to delete tmp bodyPath');
 			}
 		}
 
-		throw error
+		throw error;
 	}
-}
+};
 
 export const encryptedStream = async(
 	media: WAMediaUpload,
@@ -637,8 +667,8 @@ const onChunk = (buff: Buffer) => {
 		const fileSha256 = sha256Plain.digest()
 		const fileEncSha256 = sha256Enc.digest()
 
-		encWriteStream.push(mac)
-		encWriteStream.push(null)
+		//encWriteStream.push(mac)
+		//encWriteStream.push(null)
 
 		encFileWriteStream.write(mac)
 
